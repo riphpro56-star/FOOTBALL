@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Football Live | Scores & Fixtures</title>
+  <meta name="description" content="Football live scores, fixtures, leagues and highlights." />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <button class="icon-btn menu-btn" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+
+      <a class="brand" href="/">
+        <div class="ball">⚽</div>
+        <div>
+          <strong>FOOTBALL <span>LIVE</span></strong>
+          <small>Scores & Results</small>
+        </div>
+      </a>
+
+      <div class="top-actions">
+        <button class="icon-btn" id="searchToggle" aria-label="Search">⌕</button>
+        <button class="icon-btn notify" aria-label="Notifications">♢<b>3</b></button>
+      </div>
+    </header>
+
+    <nav class="tabs" aria-label="Main navigation">
+      <button class="tab active" data-section="home">Home</button>
+      <button class="tab" data-section="live">Live</button>
+      <button class="tab" data-section="fixtures">Fixtures</button>
+      <button class="tab" data-section="leagues">Leagues</button>
+      <button class="tab" data-section="videos">Videos</button>
+      <button class="tab" data-section="news">News</button>
+    </nav>
+
+    <section class="search-panel" id="searchPanel">
+      <input id="searchInput" type="search" placeholder="Search team, league or match..." />
+      <button id="clearSearch">Clear</button>
+    </section>
+
+    <main class="content">
+      <section class="section live-section">
+        <div class="section-head">
+          <h2><span class="dot"></span> Live Matches <em>LIVE</em></h2>
+          <button class="link-btn" data-filter="live">View all</button>
+        </div>
+        <div class="live-row" id="liveCards">
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+        </div>
+      </section>
+
+      <section class="section fixtures-section">
+        <div class="section-head">
+          <h2>Today’s Matches <span class="calendar">▣</span></h2>
+        </div>
+
+        <div class="date-strip" id="dateStrip"></div>
+
+        <div class="filter-row">
+          <button class="pill active" data-status="all">All</button>
+          <button class="pill" data-status="live">Live</button>
+          <button class="pill" data-status="upcoming">Upcoming</button>
+          <button class="pill" data-status="finished">Finished</button>
+        </div>
+
+        <div class="match-list" id="matchList">
+          <div class="loading">Loading matches...</div>
+        </div>
+
+        <button class="wide-btn" id="loadMoreBtn">View all fixtures ›</button>
+      </section>
+
+      <section class="section leagues-section">
+        <div class="section-head">
+          <h2>🏆 Top Leagues</h2>
+        </div>
+        <div class="league-grid" id="leagueGrid">
+          <button data-league="Premier League">🏴<span>Premier League</span></button>
+          <button data-league="La Liga">🇪🇸<span>La Liga</span></button>
+          <button data-league="Serie A">🇮🇹<span>Serie A</span></button>
+          <button data-league="Bundesliga">🇩🇪<span>Bundesliga</span></button>
+          <button data-league="Ligue 1">🇫🇷<span>Ligue 1</span></button>
+          <button data-league="Champions League">⭐<span>Champions League</span></button>
+        </div>
+      </section>
+
+      <section class="section videos-section">
+        <div class="section-head">
+          <h2>▷ Latest Videos</h2>
+          <button class="link-btn">View all</button>
+        </div>
+        <div class="video-row" id="videoRow">
+          <div class="skeleton-video"></div>
+          <div class="skeleton-video"></div>
+          <div class="skeleton-video"></div>
+        </div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="Bottom navigation">
+      <button class="active" data-section="home">⌂<span>Home</span></button>
+      <button data-section="fixtures">▦<span>Matches</span></button>
+      <button data-section="live">◉<span>Live</span></button>
+      <button data-section="videos">▻<span>Videos</span></button>
+      <button data-section="leagues">☆<span>Leagues</span></button>
+    </nav>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="/script.js"></script>
+</body>
+</html>
