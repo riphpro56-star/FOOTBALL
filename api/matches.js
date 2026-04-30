@@ -1,65 +1,84 @@
 const API_FOOTBALL_BASE = "https://v3.football.api-sports.io";
 const FOOTBALL_DATA_BASE = "https://api.football-data.org/v4";
 
-const FEATURED_LEAGUES = [
+/*
+  Featured mode:
+  Shows only famous competitions on the homepage.
+
+  All mode:
+  /api/matches?mode=all
+  Shows all available matches.
+*/
+
+const FEATURED_RULES = [
+  { country: "England", names: ["Premier League", "FA Cup", "League Cup"] },
+  { country: "Spain", names: ["La Liga", "Primera Division", "Copa del Rey", "Super Cup"] },
+  { country: "Italy", names: ["Serie A", "Coppa Italia", "Super Cup"] },
+  { country: "Germany", names: ["Bundesliga", "DFB Pokal", "Super Cup"] },
+  { country: "France", names: ["Ligue 1", "Coupe de France", "Super Cup"] },
+  { country: "Europe", names: ["UEFA Champions League", "Champions League", "UEFA Europa League", "Europa League", "UEFA Conference League", "Conference League"] },
+  { country: "World", names: ["FIFA World Cup", "Club World Cup", "World Cup"] },
+  { country: "Saudi-Arabia", names: ["Saudi Pro League", "Pro League", "Kings Cup"] },
+  { country: "Netherlands", names: ["Eredivisie"] },
+  { country: "Portugal", names: ["Primeira Liga"] }
+];
+
+const LEAGUE_PRIORITY = [
+  "UEFA Champions League",
+  "Champions League",
   "Premier League",
   "La Liga",
   "Primera Division",
   "Serie A",
   "Bundesliga",
   "Ligue 1",
-  "UEFA Champions League",
-  "Champions League",
   "UEFA Europa League",
   "Europa League",
   "Saudi Pro League",
-  "FIFA World Cup",
-  "UEFA European Championship",
-  "Copa America"
+  "Pro League",
+  "Eredivisie",
+  "Primeira Liga"
 ];
 
-const FEATURED_SET = new Set(FEATURED_LEAGUES.map(x => normalize(x)));
-
 const BAD_TEAM_WORDS = [
-  "u19", "u20", "u21", "u23", "youth", "women", "wfc", "reserves", " b ", " ii "
+  "u19", "u20", "u21", "u23", "youth", "women", "wfc", "reserves", " ii ", " b "
 ];
 
 export default async function handler(req, res) {
   const date = String(req.query.date || new Date().toISOString().slice(0, 10)).slice(0, 10);
-  const mode = String(req.query.mode || "featured").toLowerCase(); // featured | all
+  const mode = String(req.query.mode || "featured").toLowerCase() === "all" ? "all" : "featured";
 
   res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
 
   try {
     const apiFootball = await getApiFootballMatches(date);
-    const cleaned = prepareMatches(apiFootball, mode);
+    const matches = prepareMatches(apiFootball, mode);
 
-    if (cleaned.length || mode === "featured") {
-      return res.status(200).json({
-        source: "API-Football",
-        mode,
-        date,
-        count: cleaned.length,
-        matches: cleaned
-      });
-    }
+    return res.status(200).json({
+      source: "API-Football",
+      mode,
+      date,
+      count: matches.length,
+      matches
+    });
   } catch (err) {
     console.error("API-Football failed:", err.message);
   }
 
   try {
     const backup = await getFootballDataMatches(date);
-    const cleaned = prepareMatches(backup, mode);
+    const matches = prepareMatches(backup, mode);
 
     return res.status(200).json({
       source: "football-data.org backup",
       mode,
       date,
-      count: cleaned.length,
-      matches: cleaned
+      count: matches.length,
+      matches
     });
   } catch (err) {
     console.error("football-data failed:", err.message);
+
     return res.status(500).json({
       error: "Could not load football matches. Check API keys in Vercel Environment Variables.",
       detail: err.message
@@ -72,8 +91,11 @@ async function getApiFootballMatches(date) {
   if (!key) throw new Error("Missing API_FOOTBALL_KEY");
 
   const url = `${API_FOOTBALL_BASE}/fixtures?date=${encodeURIComponent(date)}`;
+
   const r = await fetch(url, {
-    headers: { "x-apisports-key": key }
+    headers: {
+      "x-apisports-key": key
+    }
   });
 
   const data = await r.json();
@@ -115,11 +137,16 @@ async function getFootballDataMatches(date) {
   const url = `${FOOTBALL_DATA_BASE}/matches?dateFrom=${encodeURIComponent(date)}&dateTo=${encodeURIComponent(date)}`;
 
   const r = await fetch(url, {
-    headers: { "X-Auth-Token": key }
+    headers: {
+      "X-Auth-Token": key
+    }
   });
 
   const data = await r.json();
-  if (!r.ok) throw new Error(data.message || `football-data HTTP ${r.status}`);
+
+  if (!r.ok) {
+    throw new Error(data.message || `football-data HTTP ${r.status}`);
+  }
 
   return (data.matches || []).map(item => ({
     id: `fd-${item.id}`,
@@ -150,25 +177,30 @@ async function getFootballDataMatches(date) {
 function prepareMatches(matches, mode) {
   let list = matches.map(m => ({
     ...m,
-    featured: isFeaturedLeague(m),
+    featured: isFeaturedMatch(m),
     badYouth: isYouthOrReserve(m),
     weight: getWeight(m)
   }));
 
-  if (mode !== "all") {
+  if (mode === "featured") {
     list = list.filter(m => m.featured && !m.badYouth);
   }
 
-  return sortMatches(list).slice(0, mode === "all" ? 120 : 40);
+  return sortMatches(list).slice(0, mode === "all" ? 150 : 50);
 }
 
-function isFeaturedLeague(m) {
-  const league = normalize(m.league?.name || "");
-  if (FEATURED_SET.has(league)) return true;
+function isFeaturedMatch(match) {
+  const leagueName = normalize(match.league?.name || "");
+  const country = normalizeCountry(match.league?.country || "");
 
-  return FEATURED_LEAGUES.some(name => {
-    const n = normalize(name);
-    return league.includes(n) || n.includes(league);
+  return FEATURED_RULES.some(rule => {
+    const sameCountry = normalizeCountry(rule.country) === country;
+    if (!sameCountry) return false;
+
+    return rule.names.some(name => {
+      const n = normalize(name);
+      return leagueName === n || leagueName.includes(n) || n.includes(leagueName);
+    });
   });
 }
 
@@ -179,26 +211,55 @@ function isYouthOrReserve(m) {
 
 function getWeight(m) {
   const league = normalize(m.league?.name || "");
-  const idx = FEATURED_LEAGUES.findIndex(x => league.includes(normalize(x)) || normalize(x).includes(league));
-  const base = idx >= 0 ? idx : 99;
-  const liveBonus = isLiveStatus(m.statusShort) ? -10 : 0;
-  return base + liveBonus + (isYouthOrReserve(m) ? 70 : 0);
+  const country = normalizeCountry(m.league?.country || "");
+  const idx = LEAGUE_PRIORITY.findIndex(name => {
+    const n = normalize(name);
+    return league === n || league.includes(n) || n.includes(league);
+  });
+
+  let base = idx >= 0 ? idx : 99;
+
+  if (country === "england") base -= 2;
+  if (country === "europe") base -= 4;
+  if (isLiveStatus(m.statusShort)) base -= 20;
+  if (isYouthOrReserve(m)) base += 80;
+
+  return base;
 }
 
 function sortMatches(matches) {
   return matches.sort((a, b) => {
     const liveA = isLiveStatus(a.statusShort) ? 0 : 1;
     const liveB = isLiveStatus(b.statusShort) ? 0 : 1;
-    return liveA - liveB || (a.weight || 99) - (b.weight || 99) || new Date(a.utcDate) - new Date(b.utcDate);
+
+    return (
+      liveA - liveB ||
+      (a.weight || 99) - (b.weight || 99) ||
+      new Date(a.utcDate) - new Date(b.utcDate)
+    );
   });
 }
 
-function isLiveStatus(s) {
-  return ["1H", "2H", "HT", "ET", "BT", "P", "SUSP", "INT", "LIVE"].includes(s);
+function isLiveStatus(status) {
+  return ["1H", "2H", "HT", "ET", "BT", "P", "SUSP", "INT", "LIVE"].includes(status);
 }
 
 function normalize(s) {
-  return String(s).toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  return String(s)
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeCountry(s) {
+  return String(s)
+    .toLowerCase()
+    .replace("saudi arabia", "saudi-arabia")
+    .replace("saudi-arabia", "saudi-arabia")
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 function mapFootballDataStatus(status) {
@@ -212,5 +273,6 @@ function mapFootballDataStatus(status) {
     SUSPENDED: "SUSP",
     CANCELLED: "CANC"
   };
+
   return map[status] || "NS";
 }
