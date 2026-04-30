@@ -20,7 +20,17 @@ const awayScore =
 
 scoreEl.textContent = `${homeScore} - ${awayScore}`;
 function fallbackLogo(name){return`https://placehold.co/100x100/0f172a/22dc62?text=${encodeURIComponent((name||'?').slice(0,2).toUpperCase())}`}
-function logoUrl(url,name){return url||fallbackLogo(name)}
+function logoUrl(url,name){
+  if(url) return url;
+
+  const n = (name || '').toLowerCase();
+
+  if(n.includes('barcelona sc')) {
+    return fallbackLogo('Barcelona SC');
+  }
+
+  return fallbackLogo(name);
+}
 async function loadConfig(){try{const r=await fetch('/api/config'),d=await r.json();watchLink=d.watchLink||'#';officialWatchLink.href=watchLink;cpaSideLink.href=watchLink}catch{}}
 async function loadMatches(){matchesList.innerHTML='<div class="loading">جاري تحميل المباريات...</div>';apiStatus.textContent='جاري الاتصال بـ Netlify Function...';try{const days=Number(daysFilter.value||7),r=await fetch(`/api/matches?days=${days}&cache=${Date.now()}`),d=await r.json();if(!r.ok||d.error)throw new Error(d.message||'API Error');allMatches=d.matches||[];apiStatus.textContent=d.source==='demo'?'الموقع يعمل، لكن FOOTBALL_DATA_TOKEN غير موجود. يتم عرض ديمو.':`تم جلب ${d.count||allMatches.length} مباراة من ${d.source}.`;buildLeagueFilter();renderAll()}catch(e){matchesList.innerHTML='<div class="loading">حدث خطأ في جلب المباريات.</div>';apiStatus.textContent='خطأ: '+e.message}}
 function buildLeagueFilter(){const cur=leagueFilter.value,map=new Map();allMatches.forEach(m=>{if(m.competitionCode)map.set(m.competitionCode,m.competition)});leagueFilter.innerHTML='<option value="ALL">كل البطولات</option>';[...map.entries()].sort((a,b)=>a[1].localeCompare(b[1])).forEach(([code,name])=>{const o=document.createElement('option');o.value=code;o.textContent=name;leagueFilter.appendChild(o)});if([...map.keys()].includes(cur))leagueFilter.value=cur}
