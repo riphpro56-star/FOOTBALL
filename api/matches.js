@@ -1,6 +1,46 @@
-function todayISO(){return new Date().toISOString().slice(0,10)}
-function addDaysISO(days){const d=new Date();d.setDate(d.getDate()+days);return d.toISOString().slice(0,10)}
-function demoMatches(){const now=new Date(),plus=h=>new Date(now.getTime()+h*3600*1000).toISOString(),minus=m=>new Date(now.getTime()-m*60000).toISOString();return[{id:1,homeTeam:'Arsenal',awayTeam:'Manchester City',homeLogo:'',awayLogo:'',competition:'Premier League',competitionCode:'PL',utcDate:plus(2),status:'SCHEDULED',score:{fullTime:{home:null,away:null},halfTime:{home:null,away:null}}},{id:2,homeTeam:'Real Madrid',awayTeam:'Barcelona',homeLogo:'',awayLogo:'',competition:'La Liga',competitionCode:'PD',utcDate:plus(5),status:'SCHEDULED',score:{fullTime:{home:null,away:null},halfTime:{home:null,away:null}}},{id:3,homeTeam:'Bayern Munich',awayTeam:'Borussia Dortmund',homeLogo:'',awayLogo:'',competition:'Bundesliga',competitionCode:'BL1',utcDate:minus(40),status:'IN_PLAY',score:{fullTime:{home:1,away:1},halfTime:{home:1,away:0}}}]}
-function normalizeFootballData(m){return{id:m.id,homeTeam:m.homeTeam?.name||'الفريق الأول',awayTeam:m.awayTeam?.name||'الفريق الثاني',homeLogo:m.homeTeam?.crest||m.homeTeam?.logo||'',awayLogo:m.awayTeam?.crest||m.awayTeam?.logo||'',competition:m.competition?.name||'بطولة',competitionCode:m.competition?.code||'OTHER',utcDate:m.utcDate,status:m.status,score:m.score}}
-exports.handler=async function(event){const token=process.env.FOOTBALL_DATA_TOKEN,daysParam=Number(event.queryStringParameters?.days||7),safeDays=Math.max(1,Math.min(daysParam,14)),dateFrom=event.queryStringParameters?.dateFrom||todayISO(),dateTo=event.queryStringParameters?.dateTo||addDaysISO(safeDays),headers={'Content-Type':'application/json','Cache-Control':'public, max-age=60'};if(!token||token==='PUT_YOUR_TOKEN_HERE'){const matches=demoMatches();return{statusCode:200,headers,body:JSON.stringify({source:'demo',message:'No FOOTBALL_DATA_TOKEN found. Showing demo matches.',count:matches.length,matches})}}try{const apiUrl=`https://api.football-data.org/v4/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`,response=await fetch(apiUrl,{headers:{'X-Auth-Token':token}}),text=await response.text();if(!response.ok){return{statusCode:response.status,headers,body:JSON.stringify({source:'football-data.org',error:true,message:text})}}const data=JSON.parse(text),matches=(data.matches||[]).map(normalizeFootballData);return{statusCode:200,headers,body:JSON.stringify({source:'football-data.org',count:matches.length,dateFrom,dateTo,matches})}}catch(error){return{statusCode:500,headers,body:JSON.stringify({source:'netlify-function',error:true,message:error.message})}}};
+export default async function handler(req, res) {
+  try {
+    const token = process.env.FOOTBALL_API_TOKEN;
 
+    if (!token) {
+      return res.status(500).json({
+        error: 'Missing FOOTBALL_API_TOKEN'
+      });
+    }
+
+    const days = Number(req.query.days || 7);
+    const today = new Date();
+
+    const from = today.toISOString().split('T')[0];
+
+    const toDate = new Date(today);
+    toDate.setDate(today.getDate() + days);
+
+    const to = toDate.toISOString().split('T')[0];
+
+    const url = `https://api.football-data.org/v4/matches?dateFrom=${from}&dateTo=${to}`;
+
+    const response = await fetch(url, {
+      headers: {
+        'X-Auth-Token': token
+      }
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(response.status).json(data);
+    }
+
+    return res.status(200).json({
+      source: 'football-data.org',
+      count: data.matches?.length || 0,
+      matches: data.matches || []
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: 'Server error',
+      message: error.message
+    });
+  }
+}
