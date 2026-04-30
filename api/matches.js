@@ -1,33 +1,46 @@
 const API_FOOTBALL_BASE = "https://v3.football.api-sports.io";
 const FOOTBALL_DATA_BASE = "https://api.football-data.org/v4";
 
-const TOP_LEAGUES = new Set([
+const FEATURED_LEAGUES = [
   "Premier League",
-  "Primera Division",
   "La Liga",
+  "Primera Division",
   "Serie A",
   "Bundesliga",
   "Ligue 1",
   "UEFA Champions League",
   "Champions League",
   "UEFA Europa League",
-  "Eredivisie",
-  "Primeira Liga",
-  "Saudi Pro League"
-]);
+  "Europa League",
+  "Saudi Pro League",
+  "FIFA World Cup",
+  "UEFA European Championship",
+  "Copa America"
+];
+
+const FEATURED_SET = new Set(FEATURED_LEAGUES.map(x => normalize(x)));
+
+const BAD_TEAM_WORDS = [
+  "u19", "u20", "u21", "u23", "youth", "women", "wfc", "reserves", " b ", " ii "
+];
 
 export default async function handler(req, res) {
   const date = String(req.query.date || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  const mode = String(req.query.mode || "featured").toLowerCase(); // featured | all
+
   res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
 
   try {
     const apiFootball = await getApiFootballMatches(date);
-    if (apiFootball.length) {
+    const cleaned = prepareMatches(apiFootball, mode);
+
+    if (cleaned.length || mode === "featured") {
       return res.status(200).json({
         source: "API-Football",
+        mode,
         date,
-        count: apiFootball.length,
-        matches: sortMatches(apiFootball)
+        count: cleaned.length,
+        matches: cleaned
       });
     }
   } catch (err) {
@@ -36,11 +49,14 @@ export default async function handler(req, res) {
 
   try {
     const backup = await getFootballDataMatches(date);
+    const cleaned = prepareMatches(backup, mode);
+
     return res.status(200).json({
       source: "football-data.org backup",
+      mode,
       date,
-      count: backup.length,
-      matches: sortMatches(backup)
+      count: cleaned.length,
+      matches: cleaned
     });
   } catch (err) {
     console.error("football-data failed:", err.message);
@@ -61,6 +77,7 @@ async function getApiFootballMatches(date) {
   });
 
   const data = await r.json();
+
   if (!r.ok || data.errors?.token) {
     throw new Error(data.errors?.token || data.message || `API-Football HTTP ${r.status}`);
   }
@@ -87,8 +104,7 @@ async function getApiFootballMatches(date) {
     score: {
       home: item.goals?.home,
       away: item.goals?.away
-    },
-    weight: TOP_LEAGUES.has(item.league?.name) ? 1 : 2
+    }
   }));
 }
 
@@ -97,6 +113,7 @@ async function getFootballDataMatches(date) {
   if (!key) throw new Error("Missing FOOTBALL_DATA_KEY");
 
   const url = `${FOOTBALL_DATA_BASE}/matches?dateFrom=${encodeURIComponent(date)}&dateTo=${encodeURIComponent(date)}`;
+
   const r = await fetch(url, {
     headers: { "X-Auth-Token": key }
   });
@@ -126,9 +143,62 @@ async function getFootballDataMatches(date) {
     score: {
       home: item.score?.fullTime?.home ?? item.score?.halfTime?.home ?? null,
       away: item.score?.fullTime?.away ?? item.score?.halfTime?.away ?? null
-    },
-    weight: TOP_LEAGUES.has(item.competition?.name) ? 1 : 2
+    }
   }));
+}
+
+function prepareMatches(matches, mode) {
+  let list = matches.map(m => ({
+    ...m,
+    featured: isFeaturedLeague(m),
+    badYouth: isYouthOrReserve(m),
+    weight: getWeight(m)
+  }));
+
+  if (mode !== "all") {
+    list = list.filter(m => m.featured && !m.badYouth);
+  }
+
+  return sortMatches(list).slice(0, mode === "all" ? 120 : 40);
+}
+
+function isFeaturedLeague(m) {
+  const league = normalize(m.league?.name || "");
+  if (FEATURED_SET.has(league)) return true;
+
+  return FEATURED_LEAGUES.some(name => {
+    const n = normalize(name);
+    return league.includes(n) || n.includes(league);
+  });
+}
+
+function isYouthOrReserve(m) {
+  const text = ` ${normalize(`${m.home?.name || ""} ${m.away?.name || ""} ${m.league?.name || ""}`)} `;
+  return BAD_TEAM_WORDS.some(w => text.includes(w));
+}
+
+function getWeight(m) {
+  const league = normalize(m.league?.name || "");
+  const idx = FEATURED_LEAGUES.findIndex(x => league.includes(normalize(x)) || normalize(x).includes(league));
+  const base = idx >= 0 ? idx : 99;
+  const liveBonus = isLiveStatus(m.statusShort) ? -10 : 0;
+  return base + liveBonus + (isYouthOrReserve(m) ? 70 : 0);
+}
+
+function sortMatches(matches) {
+  return matches.sort((a, b) => {
+    const liveA = isLiveStatus(a.statusShort) ? 0 : 1;
+    const liveB = isLiveStatus(b.statusShort) ? 0 : 1;
+    return liveA - liveB || (a.weight || 99) - (b.weight || 99) || new Date(a.utcDate) - new Date(b.utcDate);
+  });
+}
+
+function isLiveStatus(s) {
+  return ["1H", "2H", "HT", "ET", "BT", "P", "SUSP", "INT", "LIVE"].includes(s);
+}
+
+function normalize(s) {
+  return String(s).toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function mapFootballDataStatus(status) {
@@ -144,12 +214,3 @@ function mapFootballDataStatus(status) {
   };
   return map[status] || "NS";
 }
-
-function sortMatches(matches) {
-  return matches.sort((a, b) => {
-    const liveA = ["1H","2H","HT","ET","BT","P","SUSP","INT","LIVE"].includes(a.statusShort) ? 0 : 1;
-    const liveB = ["1H","2H","HT","ET","BT","P","SUSP","INT","LIVE"].includes(b.statusShort) ? 0 : 1;
-    return liveA - liveB || (a.weight || 2) - (b.weight || 2) || new Date(a.utcDate) - new Date(b.utcDate);
-  });
-}
-
