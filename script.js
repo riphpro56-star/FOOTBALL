@@ -8,7 +8,17 @@ function onlyTime(dateStr){if(!dateStr)return'-';return new Intl.DateTimeFormat(
 function statusAr(status){return{SCHEDULED:'قادمة',TIMED:'قادمة',IN_PLAY:'مباشرة الآن',LIVE:'مباشرة الآن',PAUSED:'استراحة',FINISHED:'انتهت',POSTPONED:'مؤجلة',SUSPENDED:'متوقفة',CANCELED:'ملغاة'}[status]||status||'غير محدد'}
 function matchGroup(m){if(['IN_PLAY','LIVE','PAUSED'].includes(m.status))return'LIVE';if(['SCHEDULED','TIMED'].includes(m.status))return'UPCOMING';if(m.status==='FINISHED')return'FINISHED';return'OTHER'}
 function badgeClass(m){const g=matchGroup(m);return g==='LIVE'?'live':g==='UPCOMING'?'upcoming':g==='FINISHED'?'finished':''}
-function scoreOf(m){const h=m.score?.fullTime?.home??m.score?.halfTime?.home,a=m.score?.fullTime?.away??m.score?.halfTime?.away;return h==null||a==null?'VS':`${h} - ${a}`}
+const homeScore =
+  match.score?.fullTime?.home ??
+  match.score?.halfTime?.home ??
+  "-";
+
+const awayScore =
+  match.score?.fullTime?.away ??
+  match.score?.halfTime?.away ??
+  "-";
+
+scoreEl.textContent = `${homeScore} - ${awayScore}`;
 function fallbackLogo(name){return`https://placehold.co/100x100/0f172a/22dc62?text=${encodeURIComponent((name||'?').slice(0,2).toUpperCase())}`}
 function logoUrl(url,name){return url||fallbackLogo(name)}
 async function loadConfig(){try{const r=await fetch('/api/config'),d=await r.json();watchLink=d.watchLink||'#';officialWatchLink.href=watchLink;cpaSideLink.href=watchLink}catch{}}
