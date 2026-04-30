@@ -2,31 +2,54 @@ const themeBtn = document.getElementById('themeBtn');
 const refreshBtn = document.getElementById('refreshBtn');
 const matchesList = document.getElementById('matchesList');
 const leagueFilter = document.getElementById('leagueFilter');
+const daysFilter = document.getElementById('daysFilter');
 const searchInput = document.getElementById('searchInput');
+const apiStatus = document.getElementById('apiStatus');
+const copyMatchBtn = document.getElementById('copyMatchBtn');
 
 const fields = {
   statAll: document.getElementById('statAll'),
   statLive: document.getElementById('statLive'),
-  statFinished: document.getElementById('statFinished'),
   statUpcoming: document.getElementById('statUpcoming'),
+  statFinished: document.getElementById('statFinished'),
 
   heroLeague: document.getElementById('heroLeague'),
-  heroHome: document.getElementById('heroHome'),
-  heroAway: document.getElementById('heroAway'),
+  heroHomeTeam: document.getElementById('heroHomeTeam'),
+  heroAwayTeam: document.getElementById('heroAwayTeam'),
   heroScore: document.getElementById('heroScore'),
   heroTime: document.getElementById('heroTime'),
-  heroStatus: document.getElementById('heroStatus'),
   heroHomeLogo: document.getElementById('heroHomeLogo'),
-  heroAwayLogo: document.getElementById('heroAwayLogo')
+  heroAwayLogo: document.getElementById('heroAwayLogo'),
+
+  selectedTitle: document.getElementById('selectedTitle'),
+  homeLogo: document.getElementById('homeLogo'),
+  awayLogo: document.getElementById('awayLogo'),
+  homeTeam: document.getElementById('homeTeam'),
+  awayTeam: document.getElementById('awayTeam'),
+  scoreText: document.getElementById('scoreText'),
+  matchStatus: document.getElementById('matchStatus'),
+  competitionName: document.getElementById('competitionName'),
+  matchTime: document.getElementById('matchTime'),
+  statusSmall: document.getElementById('statusSmall'),
+  lastUpdate: document.getElementById('lastUpdate'),
+  autoArticle: document.getElementById('autoArticle'),
+
+  liveList: document.getElementById('liveList'),
+  nextList: document.getElementById('nextList')
 };
 
 let allMatches = [];
 let currentTab = 'ALL';
 let selectedMatchId = null;
+let watchLink = '#';
 
 /* =========================
-   أزرار عامة
+   Theme + Buttons
 ========================= */
+
+if (localStorage.getItem('theme') === 'light') {
+  document.body.classList.add('light');
+}
 
 if (themeBtn) {
   themeBtn.onclick = () => {
@@ -36,10 +59,6 @@ if (themeBtn) {
       document.body.classList.contains('light') ? 'light' : 'dark'
     );
   };
-}
-
-if (localStorage.getItem('theme') === 'light') {
-  document.body.classList.add('light');
 }
 
 if (refreshBtn) {
@@ -63,16 +82,32 @@ document.querySelectorAll('[data-tab]').forEach(btn => {
   };
 });
 
-if (leagueFilter) {
-  leagueFilter.onchange = renderMatches;
-}
+if (leagueFilter) leagueFilter.onchange = renderMatches;
+if (daysFilter) daysFilter.onchange = renderMatches;
+if (searchInput) searchInput.oninput = renderMatches;
 
-if (searchInput) {
-  searchInput.oninput = renderMatches;
+if (copyMatchBtn) {
+  copyMatchBtn.onclick = () => {
+    const match = getSelectedMatch();
+    if (!match) return;
+
+    const text = `${teamName(match.homeTeam)} ضد ${teamName(match.awayTeam)}
+البطولة: ${competitionName(match)}
+النتيجة: ${scoreOf(match)}
+الوقت: ${formatDZTime(match.utcDate)}
+الحالة: ${statusAr(match.status)}`;
+
+    navigator.clipboard.writeText(text);
+    copyMatchBtn.textContent = 'تم النسخ ✅';
+
+    setTimeout(() => {
+      copyMatchBtn.textContent = 'نسخ تفاصيل المباراة';
+    }, 2000);
+  };
 }
 
 /* =========================
-   الوقت والحالة
+   Helpers
 ========================= */
 
 function formatDZTime(dateStr) {
@@ -114,84 +149,110 @@ function statusAr(status) {
 
 function matchGroup(m) {
   if (['IN_PLAY', 'LIVE', 'PAUSED'].includes(m.status)) return 'LIVE';
-  if (['FINISHED'].includes(m.status)) return 'FINISHED';
+  if (m.status === 'FINISHED') return 'FINISHED';
   if (['SCHEDULED', 'TIMED'].includes(m.status)) return 'UPCOMING';
   return 'OTHER';
 }
 
 function badgeClass(m) {
-  const g = matchGroup(m);
+  const group = matchGroup(m);
 
-  if (g === 'LIVE') return 'badge live';
-  if (g === 'FINISHED') return 'badge finished';
-  if (g === 'UPCOMING') return 'badge upcoming';
+  if (group === 'LIVE') return 'badge live';
+  if (group === 'FINISHED') return 'badge finished';
+  if (group === 'UPCOMING') return 'badge upcoming';
 
   return 'badge';
-}
-
-/* =========================
-   النتيجة والشعارات
-========================= */
-
-function scoreOf(m) {
-  const home =
-    m.score?.fullTime?.home ??
-    m.score?.halfTime?.home ??
-    m.score?.regularTime?.home ??
-    '-';
-
-  const away =
-    m.score?.fullTime?.away ??
-    m.score?.halfTime?.away ??
-    m.score?.regularTime?.away ??
-    '-';
-
-  return `${home} - ${away}`;
-}
-
-function fallbackLogo(name) {
-  const text = encodeURIComponent((name || 'TEAM').slice(0, 12));
-
-  return `https://placehold.co/100x100/0b1411/22c55e?text=${text}`;
-}
-
-function logoUrl(url, name) {
-  if (url) return url;
-
-  return fallbackLogo(name);
 }
 
 function teamName(team) {
   if (!team) return '-';
   if (typeof team === 'string') return team;
 
-  return team.name || team.shortName || team.tla || '-';
+  return team.name || team.shortName || team.tla || team.fullName || '-';
+}
+
+function competitionName(m) {
+  if (!m) return 'بطولة غير معروفة';
+
+  if (typeof m.competition === 'string') {
+    return m.competition;
+  }
+
+  return m.competition?.name || m.competitionCode || 'بطولة غير معروفة';
+}
+
+function scoreOf(m) {
+  if (!m || !m.score) return '- - -';
+
+  const home =
+    m.score?.fullTime?.home ??
+    m.score?.halfTime?.home ??
+    m.score?.regularTime?.home;
+
+  const away =
+    m.score?.fullTime?.away ??
+    m.score?.halfTime?.away ??
+    m.score?.regularTime?.away;
+
+  if (home === null || home === undefined || away === null || away === undefined) {
+    return '- - -';
+  }
+
+  return `${home} - ${away}`;
+}
+
+function fallbackLogo(name) {
+  const text = encodeURIComponent((name || 'TEAM').slice(0, 14));
+  return `https://placehold.co/100x100/0b1411/22c55e?text=${text}`;
 }
 
 function teamLogo(team) {
-  if (!team || typeof team === 'string') {
+  if (!team) return fallbackLogo('TEAM');
+
+  if (typeof team === 'string') {
     return fallbackLogo(team);
   }
 
-  return logoUrl(
-    team.crest || team.logo || team.emblem || team.image || '',
-    teamName(team)
+  return (
+    team.crest ||
+    team.logo ||
+    team.emblem ||
+    team.image ||
+    fallbackLogo(teamName(team))
+  );
+}
+
+function getSelectedMatch() {
+  return (
+    allMatches.find(m => String(m.id) === String(selectedMatchId)) ||
+    allMatches[0] ||
+    null
   );
 }
 
 /* =========================
-   جلب البيانات
+   API
 ========================= */
 
 async function loadConfig() {
   try {
     const res = await fetch('/api/config');
-    if (!res.ok) return null;
 
-    return await res.json();
+    if (!res.ok) return;
+
+    const config = await res.json();
+
+    if (config.watchLink) {
+      watchLink = config.watchLink;
+    }
+
+    const officialWatchLink = document.getElementById('officialWatchLink');
+    const cpaSideLink = document.getElementById('cpaSideLink');
+
+    if (officialWatchLink) officialWatchLink.href = watchLink;
+    if (cpaSideLink) cpaSideLink.href = watchLink;
   } catch (e) {
     console.warn('Config error:', e);
-    return null;
   }
 }
 
@@ -200,8 +261,13 @@ async function loadMatches() {
     matchesList.innerHTML = `<div class="loading">جاري تحميل المباريات...</div>`;
   }
 
+  if (apiStatus) {
+    apiStatus.textContent = 'جاري الاتصال بـ API...';
+  }
+
   try {
-    const res = await fetch('/api/matches');
+    const days = daysFilter?.value || '7';
+    const res = await fetch(`/api/matches?days=${days}`);
 
     if (!res.ok) {
       throw new Error('API error');
@@ -212,17 +278,25 @@ async function loadMatches() {
     allMatches = Array.isArray(data.matches) ? data.matches : [];
 
     buildLeagueFilter();
+
+    if (apiStatus) {
+      apiStatus.textContent = `متصل ✅ تم جلب ${allMatches.length} مباراة.`;
+    }
   } catch (e) {
     console.error(e);
 
     allMatches = [];
+
+    if (apiStatus) {
+      apiStatus.textContent = 'فشل الاتصال بـ API ❌';
+    }
 
     if (matchesList) {
       matchesList.innerHTML = `
         <div class="empty">
           حدث خطأ أثناء تحميل المباريات.
           <br>
-          تأكد أن رابط /api/matches يعمل.
+          تأكد أن /api/matches يعمل.
         </div>
       `;
     }
@@ -230,17 +304,17 @@ async function loadMatches() {
 }
 
 /* =========================
-   الفلترة والإحصائيات
+   Filters + Stats
 ========================= */
 
 function buildLeagueFilter() {
   if (!leagueFilter) return;
 
-  const currentValue = leagueFilter.value;
+  const oldValue = leagueFilter.value || 'ALL';
 
   const leagues = [...new Set(
     allMatches
-      .map(m => m.competition?.name || m.competition || 'بطولة غير معروفة')
+      .map(m => competitionName(m))
       .filter(Boolean)
   )];
 
@@ -253,8 +327,8 @@ function buildLeagueFilter() {
     leagueFilter.appendChild(option);
   });
 
-  if ([...leagueFilter.options].some(o => o.value === currentValue)) {
-    leagueFilter.value = currentValue;
+  if ([...leagueFilter.options].some(o => o.value === oldValue)) {
+    leagueFilter.value = oldValue;
   }
 }
 
@@ -265,19 +339,16 @@ function filteredMatches() {
     list = list.filter(m => matchGroup(m) === 'LIVE');
   }
 
-  if (currentTab === 'FINISHED') {
-    list = list.filter(m => matchGroup(m) === 'FINISHED');
-  }
-
   if (currentTab === 'UPCOMING') {
     list = list.filter(m => matchGroup(m) === 'UPCOMING');
   }
 
-  if (leagueFilter && leagueFilter.value && leagueFilter.value !== 'ALL') {
-    list = list.filter(m => {
-      const league = m.competition?.name || m.competition || 'بطولة غير معروفة';
-      return league === leagueFilter.value;
-    });
+  if (currentTab === 'FINISHED') {
+    list = list.filter(m => matchGroup(m) === 'FINISHED');
+  }
+
+  if (leagueFilter && leagueFilter.value !== 'ALL') {
+    list = list.filter(m => competitionName(m) === leagueFilter.value);
   }
 
   if (searchInput && searchInput.value.trim()) {
@@ -286,9 +357,9 @@ function filteredMatches() {
     list = list.filter(m => {
       const home = teamName(m.homeTeam).toLowerCase();
       const away = teamName(m.awayTeam).toLowerCase();
-      const league = String(m.competition?.name || m.competition || '').toLowerCase();
+      const comp = competitionName(m).toLowerCase();
 
-      return home.includes(q) || away.includes(q) || league.includes(q);
+      return home.includes(q) || away.includes(q) || comp.includes(q);
     });
   }
 
@@ -304,56 +375,46 @@ function updateStats() {
     fields.statLive.textContent = allMatches.filter(m => matchGroup(m) === 'LIVE').length;
   }
 
-  if (fields.statFinished) {
-    fields.statFinished.textContent = allMatches.filter(m => matchGroup(m) === 'FINISHED').length;
-  }
-
   if (fields.statUpcoming) {
     fields.statUpcoming.textContent = allMatches.filter(m => matchGroup(m) === 'UPCOMING').length;
+  }
+
+  if (fields.statFinished) {
+    fields.statFinished.textContent = allMatches.filter(m => matchGroup(m) === 'FINISHED').length;
   }
 }
 
 /* =========================
-   مباراة الواجهة الكبيرة
+   Hero + Details
 ========================= */
 
 function autoSelectHeroMatch() {
-  const liveMatch = allMatches.find(m =>
-    ['IN_PLAY', 'LIVE', 'PAUSED'].includes(m.status)
-  );
-
-  const upcomingMatch = allMatches.find(m =>
-    ['SCHEDULED', 'TIMED'].includes(m.status)
-  );
+  const liveMatch = allMatches.find(m => matchGroup(m) === 'LIVE');
+  const upcomingMatch = allMatches.find(m => matchGroup(m) === 'UPCOMING');
+  const finishedMatch = allMatches.find(m => matchGroup(m) === 'FINISHED');
 
   selectedMatchId =
     liveMatch?.id ||
     upcomingMatch?.id ||
+    finishedMatch?.id ||
     allMatches[0]?.id ||
     null;
 }
 
 function renderHero() {
-  if (!selectedMatchId && allMatches.length) {
-    autoSelectHeroMatch();
-  }
-
-  const match =
-    allMatches.find(m => String(m.id) === String(selectedMatchId)) ||
-    allMatches[0];
+  const match = getSelectedMatch();
 
   if (!match) return;
 
   const home = teamName(match.homeTeam);
   const away = teamName(match.awayTeam);
-  const league = match.competition?.name || match.competition || 'بطولة غير معروفة';
+  const comp = competitionName(match);
 
-  if (fields.heroLeague) fields.heroLeague.textContent = league;
-  if (fields.heroHome) fields.heroHome.textContent = home;
-  if (fields.heroAway) fields.heroAway.textContent = away;
+  if (fields.heroLeague) fields.heroLeague.textContent = comp;
+  if (fields.heroHomeTeam) fields.heroHomeTeam.textContent = home;
+  if (fields.heroAwayTeam) fields.heroAwayTeam.textContent = away;
   if (fields.heroScore) fields.heroScore.textContent = scoreOf(match);
   if (fields.heroTime) fields.heroTime.textContent = formatDZTime(match.utcDate);
-  if (fields.heroStatus) fields.heroStatus.textContent = statusAr(match.status);
 
   if (fields.heroHomeLogo) {
     fields.heroHomeLogo.src = teamLogo(match.homeTeam);
@@ -366,20 +427,68 @@ function renderHero() {
   }
 }
 
+function renderDetails() {
+  const match = getSelectedMatch();
+
+  if (!match) return;
+
+  const home = teamName(match.homeTeam);
+  const away = teamName(match.awayTeam);
+  const comp = competitionName(match);
+  const score = scoreOf(match);
+  const status = statusAr(match.status);
+  const time = formatDZTime(match.utcDate);
+
+  if (fields.selectedTitle) fields.selectedTitle.textContent = `${home} ضد ${away}`;
+  if (fields.homeTeam) fields.homeTeam.textContent = home;
+  if (fields.awayTeam) fields.awayTeam.textContent = away;
+  if (fields.scoreText) fields.scoreText.textContent = score;
+  if (fields.matchStatus) fields.matchStatus.textContent = status;
+  if (fields.competitionName) fields.competitionName.textContent = comp;
+  if (fields.matchTime) fields.matchTime.textContent = time;
+  if (fields.statusSmall) fields.statusSmall.textContent = status;
+  if (fields.lastUpdate) fields.lastUpdate.textContent = new Date().toLocaleTimeString('ar-DZ');
+
+  if (fields.homeLogo) {
+    fields.homeLogo.src = teamLogo(match.homeTeam);
+    fields.homeLogo.alt = home;
+  }
+
+  if (fields.awayLogo) {
+    fields.awayLogo.src = teamLogo(match.awayTeam);
+    fields.awayLogo.alt = away;
+  }
+
+  if (fields.autoArticle) {
+    fields.autoArticle.innerHTML = `
+      <p>
+        يلتقي <b>${home}</b> مع <b>${away}</b> ضمن منافسات <b>${comp}</b>.
+        موعد المباراة هو <b>${time}</b> بتوقيت الجزائر،
+        وحالة المباراة الحالية: <b>${status}</b>.
+      </p>
+    `;
+  }
+}
+
 function selectMatch(m) {
   selectedMatchId = m.id;
   renderHero();
+  renderDetails();
 
-  window.location.hash = 'hero';
+  const details = document.querySelector('.match-page');
+  if (details) {
+    details.scrollIntoView({ behavior: 'smooth' });
+  }
 }
 
 /* =========================
-   عرض المباريات
+   Render Matches
 ========================= */
 
 function renderAll() {
   updateStats();
   renderHero();
+  renderDetails();
   renderMatches();
   renderCompactLists();
 }
@@ -408,40 +517,38 @@ function renderMatches() {
 function matchCard(m) {
   const home = teamName(m.homeTeam);
   const away = teamName(m.awayTeam);
-  const league = m.competition?.name || m.competition || 'بطولة غير معروفة';
+  const comp = competitionName(m);
 
-  const card = document.createElement('div');
+  const card = document.createElement('article');
   card.className = 'match-card';
 
   card.innerHTML = `
     <div class="match-top">
       <span class="${badgeClass(m)}">${statusAr(m.status)}</span>
-      <span class="match-time">${onlyTime(m.utcDate)}</span>
+      <span>${onlyTime(m.utcDate)}</span>
     </div>
 
-    <div class="match-body">
-      <div class="team">
+    <div class="match-teams">
+      <div class="mini-team">
         <img src="${teamLogo(m.homeTeam)}" alt="${home}">
-        <strong>${home}</strong>
+        <b>${home}</b>
       </div>
 
-      <div class="score">
-        ${scoreOf(m)}
-      </div>
+      <div class="mini-score">${scoreOf(m)}</div>
 
-      <div class="team">
+      <div class="mini-team">
         <img src="${teamLogo(m.awayTeam)}" alt="${away}">
-        <strong>${away}</strong>
+        <b>${away}</b>
       </div>
     </div>
 
-    <div class="match-footer">
-      <span>${league}</span>
-      <button class="details-btn">عرض في الواجهة</button>
+    <div class="match-bottom">
+      <small>${comp}</small>
+      <button type="button">عرض التفاصيل</button>
     </div>
   `;
 
-  const btn = card.querySelector('.details-btn');
+  const btn = card.querySelector('button');
   if (btn) {
     btn.onclick = () => selectMatch(m);
   }
@@ -449,47 +556,37 @@ function matchCard(m) {
   return card;
 }
 
-/* =========================
-   قائمة مختصرة للمباشر والقادمة
-========================= */
-
 function renderCompactLists() {
-  const liveBox = document.getElementById('liveList');
-  const upcomingBox = document.getElementById('upcomingList');
+  if (fields.liveList) {
+    const live = allMatches.filter(m => matchGroup(m) === 'LIVE').slice(0, 6);
 
-  if (liveBox) {
-    const live = allMatches.filter(m => matchGroup(m) === 'LIVE').slice(0, 5);
-
-    liveBox.innerHTML = live.length
+    fields.liveList.innerHTML = live.length
       ? live.map(compactItem).join('')
-      : `<div class="empty-small">لا توجد مباريات مباشرة الآن</div>`;
+      : `<div class="empty">لا توجد مباريات مباشرة الآن.</div>`;
   }
 
-  if (upcomingBox) {
-    const upcoming = allMatches.filter(m => matchGroup(m) === 'UPCOMING').slice(0, 5);
+  if (fields.nextList) {
+    const next = allMatches.filter(m => matchGroup(m) === 'UPCOMING').slice(0, 6);
 
-    upcomingBox.innerHTML = upcoming.length
-      ? upcoming.map(compactItem).join('')
-      : `<div class="empty-small">لا توجد مباريات قادمة</div>`;
+    fields.nextList.innerHTML = next.length
+      ? next.map(compactItem).join('')
+      : `<div class="empty">لا توجد مباريات قادمة.</div>`;
   }
 }
 
 function compactItem(m) {
-  const home = teamName(m.homeTeam);
-  const away = teamName(m.awayTeam);
-
   return `
     <div class="compact-item">
-      <span>${home}</span>
+      <span>${teamName(m.homeTeam)}</span>
       <b>${scoreOf(m)}</b>
-      <span>${away}</span>
+      <span>${teamName(m.awayTeam)}</span>
       <small>${onlyTime(m.utcDate)}</small>
     </div>
   `;
 }
 
 /* =========================
-   تشغيل الموقع
+   Start
 ========================= */
 
 async function init() {
