@@ -1,0 +1,1 @@
+{"name":"koora-live-netlify-api-v5","version":"1.0.0","description":"Koora Live enhanced site with Netlify Functions","scripts":{"start":"netlify dev"},"devDependencies":{}}
